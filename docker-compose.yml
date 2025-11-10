@@ -1,0 +1,234 @@
+# ==============================================================================
+# DOCKER COMPOSE - APLICACIÓN TETRIS
+# ==============================================================================
+# Este archivo define la arquitectura de la aplicación Tetris usando contenedores Docker.
+# Incluye: Backend (Node.js), Frontend, Base de datos (PostgreSQL) y Cache (Redis)
+
+# Versión de la especificación de Docker Compose que se está utilizando
+# La versión 3.9 es compatible con Docker Engine 19.03.0+
+# NOTA: version ya no es necesaria en versiones modernas de Docker Compose
+
+# ==============================================================================
+# SERVICIOS
+# ==============================================================================
+# Define todos los contenedores que formarán parte de la aplicación
+services:
+  # ----------------------------------------------------------------------------
+  # BACKEND - Servicio del servidor Node.js
+  # (Agregaremos la opcion de que se levante el backend en modo development y ver cambios en tiempo real)
+  # Usaremos el Dockerfile.dev para que se levante el backend en modo development y ver cambios en tiempo real
+  # ----------------------------------------------------------------------------
+  backend:
+    # build: Instrucciones para construir la imagen Docker desde un Dockerfile
+    build:
+      # context: Especifica el directorio que contiene el Dockerfile y los archivos necesarios
+      # Docker usará este directorio como base para copiar archivos durante el build
+      context: ./tetris-back
+      dockerfile: Dockerfile.dev
+
+    # volumes: Montaje de volúmenes para persistencia de datos
+    # ./tetris-back:/usr/src/app → Monta el directorio local tetris-back en /usr/src/app del contenedor
+    # /usr/src/app/node_modules → Monta el directorio node_modules del contenedor en el directorio local tetris-back
+    # Esto es útil para que cuando se realicen cambios en el código fuente del backend, se actualicen en el contenedor sin necesidad de reconstruir la imagen
+    volumes:
+      - ./tetris-back:/usr/src/app
+      - /usr/src/app/node_modules # Evita sobreescribir el directorio node_modules del contenedor
+
+    # container_name: Nombre personalizado para el contenedor (en lugar de uno autogenerado)
+    # Facilita identificar y gestionar el contenedor con comandos docker
+    container_name: tetris-back
+
+    # ports: Mapeo de puertos entre el host y el contenedor
+    # Formato: "PUERTO_HOST:PUERTO_CONTENEDOR"
+    # El backend estará accesible en http://localhost:3000
+    ports:
+      - "3000:3000"
+
+    # environment: Variables de entorno que estarán disponibles dentro del contenedor
+    # Son esenciales para la configuración de la aplicación en tiempo de ejecución
+    environment:
+      # NODE_ENV: Define el entorno de ejecución de Node.js (development/production)
+      # En development, Node.js habilita watch mode y hot reload
+      - NODE_ENV=development
+
+      # CHOKIDAR_USEPOLLING: Fuerza el uso de polling para detectar cambios de archivos
+      # Necesario en Docker con Windows para que el watch mode funcione correctamente
+      - CHOKIDAR_USEPOLLING=true
+      - CHOKIDAR_INTERVAL=1000
+      - WATCHPACK_POLLING=true
+      - NESTJS_WATCH_POLLING=true
+
+      # DATABASE_URL: Cadena de conexión completa a la base de datos MySQL
+      # Formato: mysql://usuario:contraseña@host:puerto/nombre_bd
+      # 'db' es el nombre del servicio de MySQL, Docker lo resuelve internamente
+      # NOTA: Dentro de Docker usamos el puerto 3306 (puerto interno del contenedor)
+      - DATABASE_URL=mysql://tetris:admin123@db:3306/tetris
+
+      # REDIS_HOST: Hostname del servidor Redis dentro de la red Docker
+      # 'redis' corresponde al nombre del servicio definido más abajo
+      - REDIS_HOST=redis
+
+      # REDIS_PORT: Puerto en el que Redis escucha conexiones (6379 es el puerto por defecto)
+      - REDIS_PORT=6379
+
+      # JWT_SECRET: Clave secreta para firmar y verificar tokens JWT
+      # IMPORTANTE: En producción real, usar una clave segura y almacenarla en secretos
+      - JWT_SECRET=tetris-super-secret-key
+
+    # depends_on: Define el orden de inicio de los contenedores
+    # El backend esperará a que 'db' y 'redis' estén levantados antes de iniciar
+    # NOTA: No garantiza que los servicios estén "listos", solo que estén "iniciados"
+    depends_on:
+      - db
+      - redis
+
+    # networks: Redes Docker a las que se conectará este contenedor
+    # Permite comunicación entre contenedores usando sus nombres como hostnames
+    networks:
+      - tetris-network
+
+  # ----------------------------------------------------------------------------
+  # FRONTEND - Servicio del cliente web
+  # (Agregaremos la opcion de que se levante el frontend en modo development y ver cambios en tiempo real)
+  # ----------------------------------------------------------------------------
+  frontend:
+    # build: Construcción de la imagen del frontend desde su Dockerfile
+    build:
+      # context: Directorio que contiene el código fuente del frontend y su Dockerfile
+      context: ./tetris-front
+      #Usamos el Dockerfile.dev para que se levante el frontend en modo development y ver cambios en tiempo real
+      dockerfile: Dockerfile.dev
+
+    # volumes: Montaje de volúmenes para persistencia de datos
+    # ./tetris-front:/usr/src/app → Monta el directorio local tetris-front en /usr/src/app del contenedor
+    # /usr/src/app/node_modules → Monta el directorio node_modules del contenedor en el directorio local tetris-front
+    # Esto es útil para que cuando se realicen cambios en el código fuente del frontend, se actualicen en el contenedor sin necesidad de reconstruir la imagen
+    volumes:
+      - ./tetris-front:/usr/src/app
+      - /usr/src/app/node_modules
+
+    # environment: Variables de entorno para el frontend
+    environment:
+      # CHOKIDAR_USEPOLLING: Fuerza el uso de polling para detectar cambios de archivos
+      # Necesario en Docker con Windows para que el watch mode funcione correctamente
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+
+    # command: Comando para iniciar el contenedor
+    # npm run dev → Ejecuta el comando dev en el contenedor para que se levante el frontend en modo development y ver cambios en tiempo real
+    command: npm run dev
+
+    # container_name: Identificador único para el contenedor del frontend
+    container_name: tetris-front
+
+    # ports: Mapeo de puertos para acceder a la aplicación web
+    # Puerto 8080 del host → Puerto 5173 del contenedor (puerto Vite por defecto)
+    # La aplicación estará disponible en http://localhost:8080/
+    ports:
+      - "8080:5173" # puerto Vite por defecto
+
+    # depends_on: El frontend necesita que el backend esté iniciado
+    # Asegura que la API esté disponible cuando el frontend se levante
+    depends_on:
+      - backend
+
+    # networks: Conecta el frontend a la misma red que el backend
+    # Permite que el frontend pueda comunicarse con el backend usando el nombre 'backend'
+    networks:
+      - tetris-network
+
+  # ----------------------------------------------------------------------------
+  # DB - Base de datos MySQL
+  # ----------------------------------------------------------------------------
+  db:
+    # image: En lugar de build, usa una imagen oficial pre-construida de Docker Hub
+    # postgres:15-alpine → PostgreSQL versión 15 con Alpine Linux (imagen ligera)
+    image: mysql:8.0
+
+    # container_name: Nombre del contenedor de PostgreSQL
+    container_name: mysql_db
+
+    # restart: Política de reinicio del contenedor
+    # 'always' → Docker reiniciará automáticamente el contenedor si se detiene o falla
+    # Útil para mantener la base de datos siempre disponible
+    restart: always
+
+    # environment: Variables de entorno específicas de MySQL
+    # Estas variables configuran la base de datos durante la primera inicialización
+    environment:
+      # MYSQL_ROOT_PASSWORD: Contraseña del usuario root de MySQL
+      # IMPORTANTE: En producción real, usar una clave segura y almacenarla en secretos
+      - MYSQL_ROOT_PASSWORD=rootpassword123
+
+      # MYSQL_USER: Usuario de la base de datos (no root)
+      - MYSQL_USER=tetris
+
+      # MYSQL_PASSWORD: Contraseña del usuario de la base de datos
+      - MYSQL_PASSWORD=admin123
+
+      # MYSQL_DATABASE: Nombre de la base de datos que se creará automáticamente
+      - MYSQL_DATABASE=tetris
+
+    # volumes: Montaje de volúmenes para persistencia de datos
+    # mysql_data → /var/lib/mysql (directorio donde MySQL guarda los datos)
+    # Sin esto, los datos se perderían cada vez que se elimine el contenedor
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+    # ports: Expone MySQL al host en el puerto 3307
+    # Permite conectarse a la BD desde herramientas externas (MySQL Workbench, DBeaver, etc.)
+    ports:
+      - "3307:3306"
+
+    # --default-authentication-plugin=mysql_native_password → Configura el plugin de autenticación por defecto para MySQL
+    # Esto es necesario para que el contenedor se pueda iniciar correctamente
+    command: --default-authentication-plugin=mysql_native_password
+
+    # networks: Conecta la base de datos a la red compartida
+    networks:
+      - tetris-network
+
+  # ----------------------------------------------------------------------------
+  # REDIS - Cache y almacenamiento en memoria
+  # ----------------------------------------------------------------------------
+  redis:
+    # image: Imagen oficial de Redis versión 7 con Alpine Linux
+    # Redis se usa típicamente para cache, sesiones, colas de mensajes, etc.
+    image: redis:7-alpine
+
+    # container_name: Identificador del contenedor de Redis
+    container_name: redis_cache
+
+    # restart: Reinicia automáticamente si el contenedor se detiene
+    restart: always
+
+    # ports: Expone Redis en el puerto por defecto 6379
+    # Permite acceso desde el host para debugging o monitoreo
+    ports:
+      - "6379:6379"
+
+    # networks: Conecta Redis a la red para que sea accesible por otros servicios
+    networks:
+      - tetris-network
+
+# ==============================================================================
+# VOLUMES
+# ==============================================================================
+# Define volúmenes con nombre gestionados por Docker
+# Los volúmenes persisten los datos incluso cuando los contenedores se eliminan
+volumes:
+  # mysql_data: Almacena todos los datos de MySQL (tablas, índices, etc.)
+  # Docker gestiona automáticamente dónde se almacenan estos datos en el host
+  mysql_data:
+
+# ==============================================================================
+# NETWORKS
+# ==============================================================================
+# Define redes personalizadas para la comunicación entre contenedores
+networks:
+  # tetris-network: Red privada para todos los servicios de la aplicación
+  tetris-network:
+    # driver: Tipo de red a utilizar
+    # 'bridge' → Red bridge (por defecto), aísla los contenedores del host
+    # Permite comunicación entre contenedores por nombre y mantiene seguridad
+    driver: bridge

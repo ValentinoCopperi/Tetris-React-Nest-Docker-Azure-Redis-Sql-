@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "watchAssets": true
+  },
+  "watchOptions": {
+    "watchFile": "usePolling",
+    "watchDirectory": "usePolling",
+    "fallbackPolling": "dynamicPriority",
+    "synchronousWatchDirectory": true,
+    "pollingInterval": 500,
+    "excludeDirectories": ["**/node_modules", "**/dist"]
+  }
+}
